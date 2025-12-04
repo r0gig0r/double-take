@@ -382,43 +382,10 @@ export default {
     },
     async trainSingleFace() {
       try {
-        // Get CompreFace config
-        const configResponse = await ApiService.get('config');
-        const compreFaceConfig = configResponse.data.detectors.compreface;
-
-        // Fetch the image file
-        const imageResponse = await fetch(this.getImageUrl(this.currentFace.filename));
-        const imageBlob = await imageResponse.blob();
-
-        // Train via CompreFace
-        const formData = new FormData();
-        formData.append('file', imageBlob);
-
-        const trainResponse = await fetch(
-          `${compreFaceConfig.url}/api/v1/recognition/faces?subject=${encodeURIComponent(
-            this.subjectName
-          )}`,
-          {
-            method: 'POST',
-            headers: {
-              'x-api-key': compreFaceConfig.key,
-            },
-            body: formData,
-          }
-        );
-
-        if (!trainResponse.ok) {
-          const error = await trainResponse.json();
-          throw new Error(error.message || 'Training failed');
-        }
-
-        const result = await trainResponse.json();
-
-        // Record the tag in Double-Take
-        await ApiService.post('tag/tag-face', {
+        // Train via backend (which proxies to CompreFace)
+        const response = await ApiService.post('tag/train-face', {
           filename: this.currentFace.filename,
           subject: this.subjectName,
-          image_id: result.image_id,
         });
 
         this.emitter.emit('toast', {
@@ -440,66 +407,53 @@ export default {
         this.emitter.emit('toast', {
           severity: 'error',
           summary: 'Error',
-          detail: error.message || 'Failed to train face',
+          detail: error.response?.data?.error || error.message || 'Failed to train face',
         });
       }
     },
     async trainMultipleFaces() {
       const facesToTrain = this.faces.filter((f) => this.selectedFaces.includes(f.id));
       const total = facesToTrain.length;
+      let successCount = 0;
 
       try {
-        // Get CompreFace config once
-        const configResponse = await ApiService.get('config');
-        const compreFaceConfig = configResponse.data.detectors.compreface;
-
         for (let i = 0; i < facesToTrain.length; i++) {
           const face = facesToTrain[i];
           this.trainingProgress = `Training ${i + 1} of ${total}...`;
           this.trainingProgressPercent = Math.round(((i + 1) / total) * 100);
 
-          // Fetch the image file
-          const imageResponse = await fetch(this.getImageUrl(face.filename));
-          const imageBlob = await imageResponse.blob();
-
-          // Train via CompreFace
-          const formData = new FormData();
-          formData.append('file', imageBlob);
-
-          const trainResponse = await fetch(
-            `${compreFaceConfig.url}/api/v1/recognition/faces?subject=${encodeURIComponent(
-              this.subjectName
-            )}`,
-            {
-              method: 'POST',
-              headers: {
-                'x-api-key': compreFaceConfig.key,
-              },
-              body: formData,
-            }
-          );
-
-          if (trainResponse.ok) {
-            const result = await trainResponse.json();
-
-            // Record the tag in Double-Take
-            await ApiService.post('tag/tag-face', {
+          try {
+            // Train via backend (which proxies to CompreFace)
+            await ApiService.post('tag/train-face', {
               filename: face.filename,
               subject: this.subjectName,
-              image_id: result.image_id,
             });
+            successCount++;
+          } catch (error) {
+            console.error(`Failed to train face ${face.filename}:`, error);
           }
         }
 
-        this.emitter.emit('toast', {
-          severity: 'success',
-          summary: 'Success',
-          detail: `Trained ${total} faces as ${this.subjectName}`,
-        });
+        if (successCount > 0) {
+          this.emitter.emit('toast', {
+            severity: 'success',
+            summary: 'Success',
+            detail: `Trained ${successCount} of ${total} faces as ${this.subjectName}`,
+          });
+        }
 
-        // Remove trained faces from list
-        this.faces = this.faces.filter((f) => !this.selectedFaces.includes(f.id));
-        this.pagination.total -= total;
+        if (successCount < total) {
+          this.emitter.emit('toast', {
+            severity: 'warn',
+            summary: 'Warning',
+            detail: `${total - successCount} faces failed to train`,
+          });
+        }
+
+        // Remove successfully trained faces from list
+        const trainedFaceIds = facesToTrain.slice(0, successCount).map((f) => f.id);
+        this.faces = this.faces.filter((f) => !trainedFaceIds.includes(f.id));
+        this.pagination.total -= successCount;
         this.selectedFaces = [];
         this.bulkSelectMode = false;
         this.closeTagModal();
@@ -512,7 +466,7 @@ export default {
         this.emitter.emit('toast', {
           severity: 'error',
           summary: 'Error',
-          detail: 'Failed to train some faces',
+          detail: 'Failed to train faces',
         });
       }
     },

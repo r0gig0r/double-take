@@ -2,8 +2,7 @@ const fs = require('fs');
 const sizeOf = require('probe-image-size');
 const database = require('../util/db.util');
 const { jwt } = require('../util/auth.util');
-const { AUTH, STORAGE, UI } = require('../constants')();
-const CONFIG = require('../constants/config');
+const { AUTH, STORAGE, UI, DETECTORS } = require('../constants')();
 const axios = require('axios');
 
 const format = async (faces) => {
@@ -99,17 +98,52 @@ module.exports.getUnknownFaces = async (req, res) => {
   });
 };
 
-module.exports.tagFace = async (req, res) => {
-  const { filename, subject, image_id } = req.body;
+module.exports.trainFace = async (req, res) => {
+  const { filename, subject } = req.body;
 
   if (!filename || !subject) {
     return res.status(400).send({ error: 'filename and subject are required' });
   }
 
-  const db = database.connect();
+  const { COMPREFACE } = DETECTORS || {};
 
-  // Record the tagging in the file table to track tagged faces
+  if (!COMPREFACE) {
+    return res.status(400).send({ error: 'CompreFace not configured' });
+  }
+
   try {
+    const imagePath = `${STORAGE.MEDIA.PATH}/matches/${filename}`;
+
+    if (!fs.existsSync(imagePath)) {
+      return res.status(404).send({ error: 'Image file not found' });
+    }
+
+    // Train the face via CompreFace
+    const FormData = require('form-data');
+    const formData = new FormData();
+    formData.append('file', fs.createReadStream(imagePath));
+
+    const response = await axios({
+      method: 'post',
+      url: `${COMPREFACE.URL}/api/v1/recognition/faces?subject=${encodeURIComponent(subject)}`,
+      headers: {
+        ...formData.getHeaders(),
+        'x-api-key': COMPREFACE.KEY,
+      },
+      data: formData,
+      timeout: COMPREFACE.TIMEOUT * 1000 || 15000,
+    });
+
+    if (response.status !== 201 && response.status !== 200) {
+      return res.status(response.status).send({
+        error: response.data.message || 'Training failed',
+      });
+    }
+
+    const { image_id } = response.data;
+
+    // Record the tagging in the file table
+    const db = database.connect();
     db.prepare(
       `INSERT OR IGNORE INTO file (name, filename, meta, isActive, createdAt)
        VALUES (?, ?, ?, 1, datetime('now'))`
@@ -123,30 +157,33 @@ module.exports.tagFace = async (req, res) => {
     res.send({
       success: true,
       subject,
+      image_id,
       training_count: countResult.count,
     });
   } catch (error) {
-    console.error('Error recording tag:', error);
-    res.status(500).send({ error: 'Failed to record tag' });
+    console.error('Error training face:', error);
+    res.status(500).send({
+      error: error.response?.data?.message || error.message || 'Failed to train face',
+    });
   }
 };
 
 module.exports.getSubjects = async (req, res) => {
   try {
-    const compreFaceConfig = CONFIG.detectors().find((d) => d.type === 'compreface');
+    const { COMPREFACE } = DETECTORS || {};
 
-    if (!compreFaceConfig) {
+    if (!COMPREFACE) {
       return res.status(400).send({ error: 'CompreFace not configured' });
     }
 
     // Fetch subjects from CompreFace
     const response = await axios.get(
-      `${compreFaceConfig.url}/api/v1/recognition/subjects`,
+      `${COMPREFACE.URL}/api/v1/recognition/subjects`,
       {
         headers: {
-          'x-api-key': compreFaceConfig.key,
+          'x-api-key': COMPREFACE.KEY,
         },
-        timeout: compreFaceConfig.timeout * 1000 || 15000,
+        timeout: COMPREFACE.TIMEOUT * 1000 || 15000,
       }
     );
 
@@ -157,12 +194,12 @@ module.exports.getSubjects = async (req, res) => {
       subjects.map(async (subjectName) => {
         try {
           const facesResponse = await axios.get(
-            `${compreFaceConfig.url}/api/v1/recognition/faces?subject=${encodeURIComponent(subjectName)}`,
+            `${COMPREFACE.URL}/api/v1/recognition/faces?subject=${encodeURIComponent(subjectName)}`,
             {
               headers: {
-                'x-api-key': compreFaceConfig.key,
+                'x-api-key': COMPREFACE.KEY,
               },
-              timeout: compreFaceConfig.timeout * 1000 || 15000,
+              timeout: COMPREFACE.TIMEOUT * 1000 || 15000,
             }
           );
 

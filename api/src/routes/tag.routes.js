@@ -19,16 +19,15 @@ router.get(
 );
 
 router.post(
-  '/tag-face',
+  '/train-face',
   jwt,
   validate({
     body: {
       filename: Joi.string().required(),
       subject: Joi.string().required(),
-      image_id: Joi.string().optional(),
     },
   }),
-  controller.tagFace
+  controller.trainFace
 );
 
 router.get('/subjects', jwt, controller.getSubjects);
