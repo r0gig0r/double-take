@@ -66,14 +66,17 @@
             <Column header="Name" style="width: 140px; max-width: 140px;">
               <template v-slot:body="slotProps">
                 <div v-if="canTagName(slotProps.data)" class="name-tagging">
-                  <Dropdown
+                  <input
+                    type="text"
                     v-model="slotProps.data.editableName"
-                    :options="['', ...subjects]"
-                    :editable="true"
-                    placeholder="Type/select..."
-                    class="name-dropdown"
-                    @change="onNameSelect(slotProps.data)"
+                    :list="`subjects-list-${asset.id}-${slotProps.index}`"
+                    placeholder="Type name..."
+                    class="name-input-field"
+                    @keyup.enter="trainFaceFromMatch(slotProps.data)"
                   />
+                  <datalist :id="`subjects-list-${asset.id}-${slotProps.index}`">
+                    <option v-for="subject in subjects" :key="subject" :value="subject">{{ subject }}</option>
+                  </datalist>
                   <Button
                     icon="pi pi-check"
                     class="p-button-sm p-button-success train-btn"
@@ -83,7 +86,10 @@
                     :loading="slotProps.data.training"
                   />
                 </div>
-                <div v-else class="name-text">{{ slotProps.data.name }}</div>
+                <div v-else class="name-text" :title="slotProps.data.name">
+                  {{ slotProps.data.name }}
+                  <span v-if="slotProps.data.confidence" class="confidence-badge">{{ slotProps.data.confidence }}%</span>
+                </div>
               </template>
             </Column>
             <Column header="%">
@@ -277,9 +283,14 @@ export default {
       }
     },
     canTagName(result) {
-      // Allow tagging for unknown faces or low confidence matches (< 90%)
+      // Allow tagging for unknown faces
       if (result.name === 'unknown') return true;
-      if (!result.match && result.confidence < 90) return true;
+
+      // Allow tagging for ANY face with confidence < 90% (to fix wrong identifications)
+      if (result.confidence !== null && result.confidence !== undefined && result.confidence < 90) {
+        return true;
+      }
+
       return false;
     },
     async fetchSubjects() {
@@ -289,12 +300,6 @@ export default {
       } catch (error) {
         console.error('Error fetching subjects:', error);
         this.subjects = [];
-      }
-    },
-    onNameSelect(result) {
-      // Ensure reactivity when dropdown value changes
-      if (!result.editableName) {
-        result.editableName = null;
       }
     },
     async trainFaceFromMatch(result) {
@@ -607,35 +612,29 @@ img.thumbnail {
   width: 100%;
 }
 
-.name-dropdown {
+.name-input-field {
   flex: 1;
   min-width: 90px;
   max-width: 105px;
-  font-size: 0.65rem;
-}
-
-::v-deep(.name-dropdown .p-dropdown-label) {
   padding: 0.2rem 0.3rem;
   font-size: 0.65rem;
   line-height: 1.2;
+  border: 1px solid var(--surface-border);
+  border-radius: 3px;
+  background: var(--surface-ground);
+  color: var(--text-color);
+  outline: none;
+  transition: border-color 0.2s;
 }
 
-::v-deep(.name-dropdown .p-dropdown-trigger) {
-  width: 1.5rem;
+.name-input-field:focus {
+  border-color: var(--primary-color);
+  box-shadow: 0 0 0 0.1rem var(--primary-color-alpha);
 }
 
-::v-deep(.name-dropdown .p-dropdown-panel) {
-  font-size: 0.7rem;
-}
-
-::v-deep(.name-dropdown .p-dropdown-items .p-dropdown-item) {
-  padding: 0.25rem 0.4rem;
-  font-size: 0.7rem;
-}
-
-::v-deep(.name-dropdown .p-inputtext) {
-  padding: 0.2rem 0.3rem;
-  font-size: 0.65rem;
+.name-input-field::placeholder {
+  color: var(--text-color-secondary);
+  opacity: 0.6;
 }
 
 .train-btn {
@@ -653,6 +652,18 @@ img.thumbnail {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.confidence-badge {
+  font-size: 0.6rem;
+  padding: 0.1rem 0.25rem;
+  background: var(--yellow-500);
+  color: var(--surface-900);
+  border-radius: 3px;
+  font-weight: 600;
 }
 
 /* Make the DataTable much more compact */
