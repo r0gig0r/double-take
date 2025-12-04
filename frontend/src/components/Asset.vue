@@ -239,6 +239,8 @@ export default {
     // Fetch subjects for autocomplete
     if (this.type === 'match') {
       await this.fetchSubjects();
+      // Initialize editable names with current detected names
+      this.initializeEditableNames();
     }
   },
   methods: {
@@ -249,6 +251,16 @@ export default {
     agoTime: (ISO) => Time.ago(ISO),
     getResultKey(index) {
       return `${this.asset.id}-${index}`;
+    },
+    initializeEditableNames() {
+      // Pre-populate editable names with current detected names
+      this.results.forEach((result, index) => {
+        if (this.canTagName(result)) {
+          const key = this.getResultKey(index);
+          // Initialize with the current name (even if it's 'unknown' or a low-confidence match)
+          this.editableNames[key] = result.name !== 'unknown' ? result.name : '';
+        }
+      });
     },
     imageURL() {
       return `${this.constants().api}/storage/${this.asset.file.key}?thumb${
