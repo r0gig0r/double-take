@@ -63,24 +63,17 @@
                 </div>
               </template>
             </Column>
-            <Column header="Name" style="min-width: 180px;">
+            <Column header="Name" style="width: 140px; max-width: 140px;">
               <template v-slot:body="slotProps">
                 <div v-if="canTagName(slotProps.data)" class="name-tagging">
-                  <AutoComplete
+                  <Dropdown
                     v-model="slotProps.data.editableName"
-                    :suggestions="filteredSubjects"
-                    @complete="searchSubjects($event)"
-                    @change="onNameChange(slotProps.data)"
-                    placeholder="Tag..."
-                    :dropdown="true"
-                    class="name-input"
-                    @keyup.enter="trainFaceFromMatch(slotProps.data)"
-                    inputClass="name-autocomplete-input"
-                  >
-                    <template #item="itemProps">
-                      <div class="autocomplete-item">{{ itemProps.item }}</div>
-                    </template>
-                  </AutoComplete>
+                    :options="['', ...subjects]"
+                    :editable="true"
+                    placeholder="Type/select..."
+                    class="name-dropdown"
+                    @change="onNameSelect(slotProps.data)"
+                  />
                   <Button
                     icon="pi pi-check"
                     class="p-button-sm p-button-success train-btn"
@@ -90,7 +83,7 @@
                     :loading="slotProps.data.training"
                   />
                 </div>
-                <div v-else class="name-display">{{ slotProps.data.name }}</div>
+                <div v-else class="name-text">{{ slotProps.data.name }}</div>
               </template>
             </Column>
             <Column header="%">
@@ -197,7 +190,6 @@ import Card from 'primevue/card';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Dropdown from 'primevue/dropdown';
-import AutoComplete from 'primevue/autocomplete';
 
 import Time from '@/util/time.util';
 import Constants from '@/util/constants.util';
@@ -221,7 +213,6 @@ export default {
     Dropdown,
     Button,
     VLazyImage,
-    AutoComplete,
   },
   data: () => ({
     timestamp: Date.now(),
@@ -231,7 +222,6 @@ export default {
     selectedDetector: null,
     src: null,
     subjects: [],
-    filteredSubjects: [],
   }),
   async created() {
     setInterval(() => {
@@ -301,18 +291,11 @@ export default {
         this.subjects = [];
       }
     },
-    searchSubjects(event) {
-      const query = event.query.toLowerCase();
-      if (!query) {
-        this.filteredSubjects = this.subjects;
-      } else {
-        this.filteredSubjects = this.subjects.filter((name) => name.toLowerCase().includes(query));
+    onNameSelect(result) {
+      // Ensure reactivity when dropdown value changes
+      if (!result.editableName) {
+        result.editableName = null;
       }
-    },
-    onNameChange(result) {
-      // AutoComplete v-model handles this automatically
-      // This ensures the editableName is updated
-      this.$forceUpdate();
     },
     async trainFaceFromMatch(result) {
       if (!result.editableName || !result.editableName.trim()) {
@@ -589,20 +572,25 @@ img.thumbnail {
 }
 
 .p-card {
-  font-size: 1.2em;
+  font-size: 1.05em;
 
   ::v-deep(.p-card-content) {
     padding-top: 0;
     padding-bottom: 0;
   }
   ::v-deep(.p-card-body) {
+    padding: 0.5rem;
     @media only screen and (max-width: 576px) {
-      padding: 0.75rem;
+      padding: 0.5rem;
     }
   }
 
   ::v-deep(.p-card-header) {
     padding: 0;
+  }
+
+  ::v-deep(.p-card-footer) {
+    padding: 0.5rem;
   }
 }
 
@@ -615,61 +603,76 @@ img.thumbnail {
 .name-tagging {
   display: flex;
   align-items: center;
-  gap: 0.25rem;
+  gap: 0.2rem;
   width: 100%;
 }
 
-.name-input {
+.name-dropdown {
   flex: 1;
-  min-width: 120px;
-  max-width: 150px;
+  min-width: 90px;
+  max-width: 105px;
+  font-size: 0.65rem;
 }
 
-::v-deep(.name-input .p-autocomplete-input) {
-  padding: 0.3rem 0.5rem;
-  font-size: 0.75rem;
-  height: 28px;
+::v-deep(.name-dropdown .p-dropdown-label) {
+  padding: 0.2rem 0.3rem;
+  font-size: 0.65rem;
+  line-height: 1.2;
 }
 
-::v-deep(.name-input .p-autocomplete-dropdown) {
-  width: 24px;
-  padding: 0;
+::v-deep(.name-dropdown .p-dropdown-trigger) {
+  width: 1.5rem;
 }
 
-::v-deep(.name-input .p-autocomplete-panel) {
-  font-size: 0.75rem;
+::v-deep(.name-dropdown .p-dropdown-panel) {
+  font-size: 0.7rem;
 }
 
-::v-deep(.name-input .p-autocomplete-panel .p-autocomplete-items) {
-  padding: 0;
+::v-deep(.name-dropdown .p-dropdown-items .p-dropdown-item) {
+  padding: 0.25rem 0.4rem;
+  font-size: 0.7rem;
 }
 
-.autocomplete-item {
-  padding: 0.3rem 0.5rem;
-  font-size: 0.75rem;
+::v-deep(.name-dropdown .p-inputtext) {
+  padding: 0.2rem 0.3rem;
+  font-size: 0.65rem;
 }
 
 .train-btn {
-  padding: 0.3rem 0.5rem;
-  height: 28px;
+  padding: 0.2rem 0.3rem !important;
+  min-width: 24px;
+  height: 24px;
 }
 
 .train-btn .pi {
+  font-size: 0.65rem;
+}
+
+.name-text {
   font-size: 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.name-display {
-  font-size: 0.875rem;
-}
-
-/* Make the DataTable more compact */
+/* Make the DataTable much more compact */
 ::v-deep(.p-datatable.p-datatable-sm .p-datatable-tbody > tr > td) {
-  padding: 0.3rem 0.5rem;
-  font-size: 0.875rem;
+  padding: 0.15rem 0.3rem;
+  font-size: 0.7rem;
+  line-height: 1.3;
 }
 
 ::v-deep(.p-datatable.p-datatable-sm .p-datatable-thead > tr > th) {
-  padding: 0.3rem 0.5rem;
-  font-size: 0.875rem;
+  padding: 0.2rem 0.3rem;
+  font-size: 0.7rem;
+  line-height: 1.3;
+}
+
+/* Make badges smaller */
+::v-deep(.p-badge) {
+  font-size: 0.65rem;
+  min-width: 1.2rem;
+  height: 1.2rem;
+  line-height: 1.2rem;
 }
 </style>
