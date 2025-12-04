@@ -132,11 +132,15 @@ module.exports.trainFace = async (req, res) => {
       },
       data: formData,
       timeout: COMPREFACE.TIMEOUT * 1000 || 15000,
+      validateStatus: () => true, // Don't throw on any status code
     });
 
+    // Handle CompreFace errors
     if (response.status !== 201 && response.status !== 200) {
+      const errorMessage = response.data?.message || response.data?.error || 'Training failed';
+      console.error(`CompreFace training failed (${response.status}):`, errorMessage);
       return res.status(response.status).send({
-        error: response.data.message || 'Training failed',
+        error: errorMessage,
       });
     }
 

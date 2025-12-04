@@ -388,10 +388,12 @@ export default {
           subject: this.subjectName,
         });
 
+        // Only show success if we get here (no exception thrown)
         this.emitter.emit('toast', {
           severity: 'success',
           summary: 'Success',
-          detail: `Trained ${this.subjectName}`,
+          detail: `Successfully trained ${this.subjectName}`,
+          life: 3000,
         });
 
         // Remove from list and close modal
@@ -404,17 +406,32 @@ export default {
         await this.fetchSubjects();
       } catch (error) {
         console.error('Training error:', error);
+
+        // Extract error message from various possible locations
+        let errorMessage = 'Failed to train face';
+        if (error.response?.data?.error) {
+          errorMessage = error.response.data.error;
+        } else if (error.response?.data?.message) {
+          errorMessage = error.response.data.message;
+        } else if (error.message) {
+          errorMessage = error.message;
+        }
+
         this.emitter.emit('toast', {
           severity: 'error',
-          summary: 'Error',
-          detail: error.response?.data?.error || error.message || 'Failed to train face',
+          summary: 'Training Failed',
+          detail: errorMessage,
+          life: 5000,
         });
+
+        // Don't close modal on error so user can try again
       }
     },
     async trainMultipleFaces() {
       const facesToTrain = this.faces.filter((f) => this.selectedFaces.includes(f.id));
       const total = facesToTrain.length;
       let successCount = 0;
+      const trainedFaceIds = [];
 
       try {
         for (let i = 0; i < facesToTrain.length; i++) {
@@ -429,44 +446,60 @@ export default {
               subject: this.subjectName,
             });
             successCount++;
+            trainedFaceIds.push(face.id);
           } catch (error) {
             console.error(`Failed to train face ${face.filename}:`, error);
+            const errorMsg = error.response?.data?.error || error.message;
+            console.error(`Error details: ${errorMsg}`);
           }
         }
 
-        if (successCount > 0) {
+        // Show appropriate message based on results
+        if (successCount === total) {
           this.emitter.emit('toast', {
             severity: 'success',
             summary: 'Success',
-            detail: `Trained ${successCount} of ${total} faces as ${this.subjectName}`,
+            detail: `Successfully trained all ${total} faces as ${this.subjectName}`,
+            life: 3000,
           });
-        }
-
-        if (successCount < total) {
+        } else if (successCount > 0) {
           this.emitter.emit('toast', {
             severity: 'warn',
-            summary: 'Warning',
-            detail: `${total - successCount} faces failed to train`,
+            summary: 'Partial Success',
+            detail: `Trained ${successCount} of ${total} faces. ${total - successCount} faces had no detectable face or were too low quality.`,
+            life: 5000,
+          });
+        } else {
+          this.emitter.emit('toast', {
+            severity: 'error',
+            summary: 'Training Failed',
+            detail: `Failed to train any faces. Images may not contain detectable faces.`,
+            life: 5000,
           });
         }
 
         // Remove successfully trained faces from list
-        const trainedFaceIds = facesToTrain.slice(0, successCount).map((f) => f.id);
-        this.faces = this.faces.filter((f) => !trainedFaceIds.includes(f.id));
-        this.pagination.total -= successCount;
+        if (trainedFaceIds.length > 0) {
+          this.faces = this.faces.filter((f) => !trainedFaceIds.includes(f.id));
+          this.pagination.total -= trainedFaceIds.length;
+        }
+
         this.selectedFaces = [];
         this.bulkSelectMode = false;
         this.closeTagModal();
 
-        // Refresh stats and subjects
-        await this.fetchStats();
-        await this.fetchSubjects();
+        // Refresh stats and subjects if any succeeded
+        if (successCount > 0) {
+          await this.fetchStats();
+          await this.fetchSubjects();
+        }
       } catch (error) {
         console.error('Bulk training error:', error);
         this.emitter.emit('toast', {
           severity: 'error',
           summary: 'Error',
-          detail: 'Failed to train faces',
+          detail: 'An unexpected error occurred during bulk training',
+          life: 5000,
         });
       }
     },
