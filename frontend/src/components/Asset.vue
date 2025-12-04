@@ -68,11 +68,11 @@
                 <div v-if="canTagName(slotProps.data)" class="name-tagging">
                   <input
                     type="text"
-                    v-model="slotProps.data.editableName"
+                    v-model="editableNames[getResultKey(slotProps.index)]"
                     :list="`subjects-list-${asset.id}-${slotProps.index}`"
                     placeholder="Type name..."
                     class="name-input-field"
-                    @keyup.enter="trainFaceFromMatch(slotProps.data)"
+                    @keyup.enter="trainFaceFromMatch(slotProps.data, slotProps.index)"
                   />
                   <datalist :id="`subjects-list-${asset.id}-${slotProps.index}`">
                     <option v-for="subject in subjects" :key="subject" :value="subject">{{ subject }}</option>
@@ -80,10 +80,10 @@
                   <Button
                     icon="pi pi-check"
                     class="p-button-sm p-button-success train-btn"
-                    @click="trainFaceFromMatch(slotProps.data)"
+                    @click="trainFaceFromMatch(slotProps.data, slotProps.index)"
                     v-tooltip.top="'Train'"
-                    :disabled="!slotProps.data.editableName"
-                    :loading="slotProps.data.training"
+                    :disabled="!editableNames[getResultKey(slotProps.index)]"
+                    :loading="trainingStates[getResultKey(slotProps.index)]"
                   />
                 </div>
                 <div v-else class="name-text" :title="slotProps.data.name">
@@ -228,6 +228,8 @@ export default {
     selectedDetector: null,
     src: null,
     subjects: [],
+    editableNames: {},
+    trainingStates: {},
   }),
   async created() {
     setInterval(() => {
@@ -245,6 +247,9 @@ export default {
     }),
     formatTime: (ISO) => Time.format(ISO),
     agoTime: (ISO) => Time.ago(ISO),
+    getResultKey(index) {
+      return `${this.asset.id}-${index}`;
+    },
     imageURL() {
       return `${this.constants().api}/storage/${this.asset.file.key}?thumb${
         this.asset.token ? `&token=${this.asset.token}` : ''
@@ -302,8 +307,11 @@ export default {
         this.subjects = [];
       }
     },
-    async trainFaceFromMatch(result) {
-      if (!result.editableName || !result.editableName.trim()) {
+    async trainFaceFromMatch(result, index) {
+      const key = this.getResultKey(index);
+      const name = this.editableNames[key];
+
+      if (!name || !name.trim()) {
         this.emitter.emit('toast', {
           severity: 'warn',
           summary: 'Warning',
@@ -313,24 +321,26 @@ export default {
         return;
       }
 
-      result.training = true;
+      this.trainingStates[key] = true;
       try {
         await ApiService.post('tag/train-face', {
           filename: this.asset.file.filename,
-          subject: result.editableName.trim(),
+          subject: name.trim(),
         });
 
         this.emitter.emit('toast', {
           severity: 'success',
           summary: 'Success',
-          detail: `Successfully trained as ${result.editableName}`,
+          detail: `Successfully trained as ${name}`,
           life: 3000,
         });
 
         // Update the result to show the new name
-        result.name = result.editableName.trim();
+        result.name = name.trim();
         result.match = true;
-        result.editableName = null;
+
+        // Clear the editable name
+        this.editableNames[key] = null;
 
         // Refresh subjects list
         await this.fetchSubjects();
@@ -353,7 +363,7 @@ export default {
           life: 6000,
         });
       } finally {
-        result.training = false;
+        this.trainingStates[key] = false;
       }
     },
   },
