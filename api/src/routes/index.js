@@ -15,6 +15,7 @@ router.use('/proxy', require('./proxy.routes'));
 router.use('/logger', require('./logger.routes'));
 router.use('/status', require('./status.routes'));
 router.use('/export', require('./export.routes'));
+router.use('/tag', require('./tag.routes'));
 
 router.use(STORAGE.TMP.PATH, express.static(STORAGE.TMP.PATH));
 router.use((req, res) => {

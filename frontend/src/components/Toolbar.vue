@@ -77,6 +77,7 @@ export default {
     navigation: [
       { label: 'Matches', icon: 'pi pi-fw fa fa-portrait', to: '/' },
       { label: 'Train', icon: 'pi pi-fw fa fa-images', to: '/train' },
+      { label: 'Tag Faces', icon: 'pi pi-fw pi-tags', to: '/tag' },
       { label: 'Config', icon: 'pi pi-fw pi-cog', to: '/config' },
       { label: 'Logs', icon: 'pi pi-fw pi-file', to: '/logs' },
     ],

@@ -23,6 +23,13 @@ const routes = [
     component: () => import( '@/views/Train.vue'),
   },
   {
+    path: '/tag',
+    meta: {
+      title: 'Tag Faces',
+    },
+    component: () => import( '@/views/Tag.vue'),
+  },
+  {
     path: '/login',
     meta: {
       title: 'Login',
