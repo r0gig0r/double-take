@@ -348,12 +348,18 @@ export default {
         this.asset.isTrained = true;
       } catch (error) {
         console.error('Training error:', error);
-        const errorMessage = error.response?.data?.error || error.message || 'Failed to train face';
+        let errorMessage = error.response?.data?.error || error.message || 'Failed to train face';
+
+        // Provide helpful guidance for common errors
+        if (errorMessage.includes('No face is found') || errorMessage.includes('No face found')) {
+          errorMessage = 'Face not clear enough for training. Try tagging a clearer image of this person from another detection.';
+        }
+
         this.emitter.emit('toast', {
           severity: 'error',
-          summary: 'Training Failed',
+          summary: 'Cannot Train This Image',
           detail: errorMessage,
-          life: 5000,
+          life: 6000,
         });
       } finally {
         result.training = false;

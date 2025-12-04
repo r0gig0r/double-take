@@ -417,11 +417,16 @@ export default {
           errorMessage = error.message;
         }
 
+        // Provide helpful guidance for common errors
+        if (errorMessage.includes('No face is found') || errorMessage.includes('No face found')) {
+          errorMessage = 'Face not clear enough for training. This image has poor quality, extreme angle, or the face is too small. Try another image of this person.';
+        }
+
         this.emitter.emit('toast', {
           severity: 'error',
-          summary: 'Training Failed',
+          summary: 'Cannot Train This Image',
           detail: errorMessage,
-          life: 5000,
+          life: 6000,
         });
 
         // Don't close modal on error so user can try again
