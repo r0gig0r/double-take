@@ -48,10 +48,12 @@ module.exports.getUnknownFaces = async (req, res) => {
   const { limit = 50, offset = 0, camera, sort = 'date_desc' } = req.query;
   const db = database.connect();
 
-  // Build WHERE clause
+  // Build WHERE clause - only include faces with valid box data
   let whereClause = `
     WHERE json_extract(response, '$[0].results[0].name') = 'unknown'
     AND json_extract(response, '$[0].results[0].match') = 0
+    AND json_extract(response, '$[0].results[0].box.width') IS NOT NULL
+    AND json_extract(response, '$[0].results[0].box.width') > 0
   `;
 
   // Add camera filter if provided

@@ -63,7 +63,35 @@
                 </div>
               </template>
             </Column>
-            <Column field="name" header="Name"></Column>
+            <Column header="Name">
+              <template v-slot:body="slotProps">
+                <div v-if="canTagName(slotProps.data)" class="name-tagging">
+                  <AutoComplete
+                    v-model="slotProps.data.editableName"
+                    :suggestions="filteredSubjects"
+                    @complete="searchSubjects($event)"
+                    @item-select="onNameSelect(slotProps.data, $event)"
+                    placeholder="Tag as..."
+                    :dropdown="true"
+                    class="p-inputtext-sm name-input"
+                    @keyup.enter="trainFaceFromMatch(slotProps.data)"
+                  >
+                    <template #item="slotProps">
+                      <div class="autocomplete-item">{{ slotProps.item }}</div>
+                    </template>
+                  </AutoComplete>
+                  <Button
+                    icon="pi pi-check"
+                    class="p-button-sm p-button-success p-ml-1"
+                    @click="trainFaceFromMatch(slotProps.data)"
+                    v-tooltip.top="'Train this face'"
+                    :disabled="!slotProps.data.editableName"
+                    :loading="slotProps.data.training"
+                  />
+                </div>
+                <div v-else>{{ slotProps.data.name }}</div>
+              </template>
+            </Column>
             <Column header="%">
               <template v-slot:body="slotProps">
                 <div
@@ -168,6 +196,7 @@ import Card from 'primevue/card';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Dropdown from 'primevue/dropdown';
+import AutoComplete from 'primevue/autocomplete';
 
 import Time from '@/util/time.util';
 import Constants from '@/util/constants.util';
@@ -191,6 +220,7 @@ export default {
     Dropdown,
     Button,
     VLazyImage,
+    AutoComplete,
   },
   data: () => ({
     timestamp: Date.now(),
@@ -199,11 +229,18 @@ export default {
     reprocessing: false,
     selectedDetector: null,
     src: null,
+    subjects: [],
+    filteredSubjects: [],
   }),
-  created() {
+  async created() {
     setInterval(() => {
       this.timestamp = Date.now();
     }, 1000);
+
+    // Fetch subjects for autocomplete
+    if (this.type === 'match') {
+      await this.fetchSubjects();
+    }
   },
   methods: {
     constants: () => ({
@@ -246,6 +283,80 @@ export default {
       } catch (error) {
         this.reprocessing = false;
         this.emitter.emit('error', error);
+      }
+    },
+    canTagName(result) {
+      // Allow tagging for unknown faces or low confidence matches (< 90%)
+      if (result.name === 'unknown') return true;
+      if (!result.match && result.confidence < 90) return true;
+      return false;
+    },
+    async fetchSubjects() {
+      try {
+        const response = await ApiService.get('tag/subjects');
+        this.subjects = response.data.subjects.map((s) => s.name);
+      } catch (error) {
+        console.error('Error fetching subjects:', error);
+        this.subjects = [];
+      }
+    },
+    searchSubjects(event) {
+      const query = event.query.toLowerCase();
+      if (!query) {
+        this.filteredSubjects = this.subjects;
+      } else {
+        this.filteredSubjects = this.subjects.filter((name) => name.toLowerCase().includes(query));
+      }
+    },
+    onNameSelect(result, event) {
+      result.editableName = event.value;
+    },
+    async trainFaceFromMatch(result) {
+      if (!result.editableName || !result.editableName.trim()) {
+        this.emitter.emit('toast', {
+          severity: 'warn',
+          summary: 'Warning',
+          detail: 'Please enter a name',
+          life: 3000,
+        });
+        return;
+      }
+
+      result.training = true;
+      try {
+        await ApiService.post('tag/train-face', {
+          filename: this.asset.file.filename,
+          subject: result.editableName.trim(),
+        });
+
+        this.emitter.emit('toast', {
+          severity: 'success',
+          summary: 'Success',
+          detail: `Successfully trained as ${result.editableName}`,
+          life: 3000,
+        });
+
+        // Update the result to show the new name
+        result.name = result.editableName.trim();
+        result.match = true;
+        result.editableName = null;
+
+        // Refresh subjects list
+        await this.fetchSubjects();
+
+        // Mark asset as trained
+        this.asset.isTrained = true;
+      } catch (error) {
+        console.error('Training error:', error);
+        const errorMessage = error.response?.data?.error || error.message || 'Failed to train face';
+        this.emitter.emit('toast', {
+          severity: 'error',
+          summary: 'Training Failed',
+          detail: errorMessage,
+          life: 5000,
+        });
+      } finally {
+        result.training = false;
       }
     },
   },
@@ -484,5 +595,25 @@ img.thumbnail {
   position: absolute;
   bottom: 0;
   right: 0;
+}
+
+.name-tagging {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.name-input {
+  flex: 1;
+  min-width: 150px;
+}
+
+::v-deep(.name-input .p-autocomplete-input) {
+  padding: 0.5rem;
+  font-size: 0.875rem;
+}
+
+.autocomplete-item {
+  padding: 0.5rem;
 }
 </style>

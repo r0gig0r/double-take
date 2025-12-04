@@ -575,15 +575,20 @@ export default {
 
 .face-image-container {
   position: relative;
-  aspect-ratio: 1;
-  overflow: hidden;
+  width: 100%;
+  min-height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   background: var(--surface-ground);
+  overflow: hidden;
 }
 
 .face-thumbnail {
   width: 100%;
-  height: 100%;
-  object-fit: cover;
+  height: auto;
+  max-height: 300px;
+  object-fit: contain;
 }
 
 .face-checkbox {
@@ -610,9 +615,11 @@ export default {
 
 .modal-face-image {
   width: 100%;
-  max-height: 400px;
+  height: auto;
+  max-height: 500px;
   object-fit: contain;
   border-radius: 4px;
+  background: var(--surface-ground);
 }
 
 .floating-action-button {
