@@ -1,9 +1,12 @@
 const fs = require('fs');
 const sizeOf = require('probe-image-size');
+const { createCanvas, loadImage } = require('canvas');
 const database = require('../util/db.util');
 const { jwt } = require('../util/auth.util');
 const { AUTH, STORAGE, UI, DETECTORS } = require('../constants')();
 const axios = require('axios');
+const path = require('path');
+const os = require('os');
 
 const format = async (faces) => {
   const token = AUTH && faces.length ? jwt.sign({ route: 'storage' }) : null;
@@ -113,6 +116,8 @@ module.exports.trainFace = async (req, res) => {
     return res.status(400).send({ error: 'CompreFace not configured' });
   }
 
+  let croppedFacePath = null;
+
   try {
     const imagePath = `${STORAGE.MEDIA.PATH}/matches/${filename}`;
 
@@ -120,12 +125,62 @@ module.exports.trainFace = async (req, res) => {
       return res.status(404).send({ error: 'Image file not found' });
     }
 
-    // Train the face via CompreFace
+    // Get match record to extract bounding box
+    const db = database.connect();
+    const [match] = db.prepare('SELECT * FROM match WHERE filename = ?').all(filename);
+
+    if (!match || !match.response) {
+      return res.status(400).send({ error: 'Match record not found' });
+    }
+
+    const response = JSON.parse(match.response);
+    const box = response[0]?.results[0]?.box;
+
+    if (!box || !box.width || !box.height) {
+      return res.status(400).send({ error: 'No face bounding box found in match record' });
+    }
+
+    // Load the image and crop to face
+    const image = await loadImage(imagePath);
+
+    // Add 20% padding around the face for better training
+    const padding = 0.2;
+    const paddedWidth = box.width * (1 + padding);
+    const paddedHeight = box.height * (1 + padding);
+    const paddedLeft = Math.max(0, box.left - (paddedWidth - box.width) / 2);
+    const paddedTop = Math.max(0, box.top - (paddedHeight - box.height) / 2);
+
+    // Ensure we don't exceed image boundaries
+    const cropWidth = Math.min(paddedWidth, image.width - paddedLeft);
+    const cropHeight = Math.min(paddedHeight, image.height - paddedTop);
+
+    // Create canvas and crop the face
+    const canvas = createCanvas(cropWidth, cropHeight);
+    const ctx = canvas.getContext('2d');
+
+    ctx.drawImage(
+      image,
+      paddedLeft,
+      paddedTop,
+      cropWidth,
+      cropHeight,
+      0,
+      0,
+      cropWidth,
+      cropHeight
+    );
+
+    // Save cropped face to temp file
+    croppedFacePath = path.join(os.tmpdir(), `face-${Date.now()}-${filename}`);
+    const buffer = canvas.toBuffer('image/jpeg', { quality: 0.95 });
+    fs.writeFileSync(croppedFacePath, buffer);
+
+    // Train the face via CompreFace with cropped image
     const FormData = require('form-data');
     const formData = new FormData();
-    formData.append('file', fs.createReadStream(imagePath));
+    formData.append('file', fs.createReadStream(croppedFacePath));
 
-    const response = await axios({
+    const compreFaceResponse = await axios({
       method: 'post',
       url: `${COMPREFACE.URL}/api/v1/recognition/faces?subject=${encodeURIComponent(subject)}`,
       headers: {
@@ -137,19 +192,25 @@ module.exports.trainFace = async (req, res) => {
       validateStatus: () => true, // Don't throw on any status code
     });
 
+    // Clean up temp file
+    if (croppedFacePath && fs.existsSync(croppedFacePath)) {
+      fs.unlinkSync(croppedFacePath);
+      croppedFacePath = null;
+    }
+
     // Handle CompreFace errors
-    if (response.status !== 201 && response.status !== 200) {
-      const errorMessage = response.data?.message || response.data?.error || 'Training failed';
-      console.error(`CompreFace training failed (${response.status}):`, errorMessage);
-      return res.status(response.status).send({
+    if (compreFaceResponse.status !== 201 && compreFaceResponse.status !== 200) {
+      const errorMessage =
+        compreFaceResponse.data?.message || compreFaceResponse.data?.error || 'Training failed';
+      console.error(`CompreFace training failed (${compreFaceResponse.status}):`, errorMessage);
+      return res.status(compreFaceResponse.status).send({
         error: errorMessage,
       });
     }
 
-    const { image_id } = response.data;
+    const { image_id } = compreFaceResponse.data;
 
     // Record the tagging in the file table
-    const db = database.connect();
     db.prepare(
       `INSERT OR IGNORE INTO file (name, filename, meta, isActive, createdAt)
        VALUES (?, ?, ?, 1, datetime('now'))`
@@ -167,6 +228,15 @@ module.exports.trainFace = async (req, res) => {
       training_count: countResult.count,
     });
   } catch (error) {
+    // Clean up temp file on error
+    if (croppedFacePath && fs.existsSync(croppedFacePath)) {
+      try {
+        fs.unlinkSync(croppedFacePath);
+      } catch (unlinkError) {
+        console.error('Error cleaning up temp file:', unlinkError);
+      }
+    }
+
     console.error('Error training face:', error);
     res.status(500).send({
       error: error.response?.data?.message || error.message || 'Failed to train face',

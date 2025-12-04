@@ -63,33 +63,34 @@
                 </div>
               </template>
             </Column>
-            <Column header="Name">
+            <Column header="Name" style="min-width: 180px;">
               <template v-slot:body="slotProps">
                 <div v-if="canTagName(slotProps.data)" class="name-tagging">
                   <AutoComplete
                     v-model="slotProps.data.editableName"
                     :suggestions="filteredSubjects"
                     @complete="searchSubjects($event)"
-                    @item-select="onNameSelect(slotProps.data, $event)"
-                    placeholder="Tag as..."
+                    @change="onNameChange(slotProps.data)"
+                    placeholder="Tag..."
                     :dropdown="true"
-                    class="p-inputtext-sm name-input"
+                    class="name-input"
                     @keyup.enter="trainFaceFromMatch(slotProps.data)"
+                    inputClass="name-autocomplete-input"
                   >
-                    <template #item="slotProps">
-                      <div class="autocomplete-item">{{ slotProps.item }}</div>
+                    <template #item="itemProps">
+                      <div class="autocomplete-item">{{ itemProps.item }}</div>
                     </template>
                   </AutoComplete>
                   <Button
                     icon="pi pi-check"
-                    class="p-button-sm p-button-success p-ml-1"
+                    class="p-button-sm p-button-success train-btn"
                     @click="trainFaceFromMatch(slotProps.data)"
-                    v-tooltip.top="'Train this face'"
+                    v-tooltip.top="'Train'"
                     :disabled="!slotProps.data.editableName"
                     :loading="slotProps.data.training"
                   />
                 </div>
-                <div v-else>{{ slotProps.data.name }}</div>
+                <div v-else class="name-display">{{ slotProps.data.name }}</div>
               </template>
             </Column>
             <Column header="%">
@@ -308,8 +309,10 @@ export default {
         this.filteredSubjects = this.subjects.filter((name) => name.toLowerCase().includes(query));
       }
     },
-    onNameSelect(result, event) {
-      result.editableName = event.value;
+    onNameChange(result) {
+      // AutoComplete v-model handles this automatically
+      // This ensures the editableName is updated
+      this.$forceUpdate();
     },
     async trainFaceFromMatch(result) {
       if (!result.editableName || !result.editableName.trim()) {
@@ -586,6 +589,8 @@ img.thumbnail {
 }
 
 .p-card {
+  font-size: 1.2em;
+
   ::v-deep(.p-card-content) {
     padding-top: 0;
     padding-bottom: 0;
@@ -594,6 +599,10 @@ img.thumbnail {
     @media only screen and (max-width: 576px) {
       padding: 0.75rem;
     }
+  }
+
+  ::v-deep(.p-card-header) {
+    padding: 0;
   }
 }
 
@@ -606,20 +615,61 @@ img.thumbnail {
 .name-tagging {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.25rem;
+  width: 100%;
 }
 
 .name-input {
   flex: 1;
-  min-width: 150px;
+  min-width: 120px;
+  max-width: 150px;
 }
 
 ::v-deep(.name-input .p-autocomplete-input) {
-  padding: 0.5rem;
-  font-size: 0.875rem;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.75rem;
+  height: 28px;
+}
+
+::v-deep(.name-input .p-autocomplete-dropdown) {
+  width: 24px;
+  padding: 0;
+}
+
+::v-deep(.name-input .p-autocomplete-panel) {
+  font-size: 0.75rem;
+}
+
+::v-deep(.name-input .p-autocomplete-panel .p-autocomplete-items) {
+  padding: 0;
 }
 
 .autocomplete-item {
-  padding: 0.5rem;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.75rem;
+}
+
+.train-btn {
+  padding: 0.3rem 0.5rem;
+  height: 28px;
+}
+
+.train-btn .pi {
+  font-size: 0.75rem;
+}
+
+.name-display {
+  font-size: 0.875rem;
+}
+
+/* Make the DataTable more compact */
+::v-deep(.p-datatable.p-datatable-sm .p-datatable-tbody > tr > td) {
+  padding: 0.3rem 0.5rem;
+  font-size: 0.875rem;
+}
+
+::v-deep(.p-datatable.p-datatable-sm .p-datatable-thead > tr > th) {
+  padding: 0.3rem 0.5rem;
+  font-size: 0.875rem;
 }
 </style>
